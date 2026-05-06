@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RO-Static-Wiki</title>
+    <!-- 引入 Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- 引入 Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <style>
+        body { background-color: #f8f9fa; }
+        .card { box-shadow: 0 4px 6px rgba(0,0,0,0.1); border: none; }
+        .loading-spinner { display: none; }
+        #action-btn { min-width: 120px; }
+
+        /* 新增：让链接区域变成弹性布局，两端对齐 */
+        .link-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem; /* 元素之间的间距 */
+        }
+
+        /* 让下载按钮在小屏幕上也能正常换行或显示 */
+        .download-btn {
+            flex-shrink: 0; /* 防止按钮在空间不足时被压缩 */
+        }
+    </style>
+</head>
+<body>
+
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8 col-lg-6">
+
+            <!-- 标题区域 -->
+            <div class="text-center mb-4">
+                <h2 class="fw-bold text-primary"><i class="bi bi-box-seam"></i> RO-Static-Wiki</h2>
+                <p class="text-muted">将飞书知识库导出成静态网页，供断网环境查阅</p>
+            </div>
+
+            <!-- 主控制卡片 -->
+            <div class="card">
+                <div class="card-body p-4">
+
+                    <!-- 修改开始：访问链接与下载按钮区域 -->
+                    <div id="access-area" class="alert alert-success mb-4 d-flex align-items-center" role="alert">
+                        <!-- 左侧：链接文字 -->
+                        <div class="flex-grow-1">
+                            <i class="bi bi-link-45deg"></i>
+                            静态页面预览：
+                            <a href="{{preview_url}}" id="access-link" target="_blank" class="fw-bold text-decoration-none">{{preview_url}}</a>
+                        </div>
+
+                        <!-- 右侧：下载按钮 -->
+                        <a href="{{download_url}}" id="download-btn" class="btn btn-outline-primary ms-3 download-btn" target="_blank">
+                            <i class="bi bi-download me-1"></i> 下载
+                        </a>
+                    </div>
+                    <!-- 修改结束 -->
+
+                    <!-- 操作按钮区 -->
+                    <div class="d-grid gap-2">
+                        <button id="action-btn" class="btn btn-primary btn-lg" onclick="build()">
+                            <span class="spinner-border spinner-border-sm loading-spinner" role="status" aria-hidden="true"></span>
+                            <span id="btn-text">同步并构建</span>
+                        </button>
+                    </div>
+
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- Toast 通知容器 -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+    <div id="liveToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="toast-header">
+            <i class="bi bi-bell-fill me-2" id="toast-icon"></i>
+            <strong class="me-auto" id="toast-title">提示</strong>
+            <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+        <div class="toast-body" id="toast-message">
+            消息内容
+        </div>
+    </div>
+</div>
+
+<!-- 引入 Bootstrap JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+    // 全局变量
+    let isRunning = false;
+
+    // 核心操作
+    async function build() {
+        const btn = document.getElementById('action-btn');
+        const btnText = document.getElementById('btn-text');
+        const spinner = document.querySelector('.loading-spinner');
+
+        // 锁定按钮
+        btn.disabled = true;
+        spinner.style.display = 'inline-block';
+
+        const endpoint = '/build';
+
+        try {
+            const response = await fetch(endpoint, {
+                method: 'POST'
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                isRunning = true;
+                updateUIForRunning();
+                showToast("成功", data.message, "success");
+            } else {
+                showToast("失败", data.message || "操作失败", "warning");
+                restoreButton();
+            }
+
+        } catch (error) {
+            console.error(error);
+            showToast("错误", "请求失败，请联系管理员", "danger");
+            restoreButton();
+        }
+    }
+
+    // 更新 UI 为成功状态
+    function updateUIForRunning() {
+        const accessArea = document.getElementById('access-area');
+        const accessLink = document.getElementById('access-link');
+        const btnText = document.getElementById('btn-text');
+        const actionBtn = document.getElementById('action-btn');
+
+        btnText.textContent = "已完成构建";
+        actionBtn.className = "btn btn-success btn-lg";
+        document.querySelector('.loading-spinner').style.display = 'none';
+
+        // 可选：构建成功后，可以动态更新下载链接的状态，或者保持原样
+    }
+
+    // 恢复按钮状态 (用于失败时)
+    function restoreButton() {
+        const btn = document.getElementById('action-btn');
+        const btnText = document.getElementById('btn-text');
+        document.querySelector('.loading-spinner').style.display = 'none';
+        btn.disabled = false; // 记得恢复按钮可点击
+    }
+
+    // 显示 Toast 通知
+    function showToast(title, message, type) {
+        const toastEl = document.getElementById('liveToast');
+        const toastTitle = document.getElementById('toast-title');
+        const toastMsg = document.getElementById('toast-message');
+        const toastIcon = document.getElementById('toast-icon');
+        const toastHeader = toastEl.querySelector('.toast-header');
+
+        toastTitle.textContent = title;
+        toastMsg.textContent = message;
+
+        // 根据类型设置颜色
+        toastHeader.className = `toast-header text-white bg-${type}`;
+        if(type === 'success') toastIcon.className = "bi bi-check-circle-fill me-2";
+        else if(type === 'danger') toastIcon.className = "bi bi-x-circle-fill me-2";
+        else toastIcon.className = "bi bi-exclamation-triangle-fill me-2";
+
+        const toast = new bootstrap.Toast(toastEl);
+        toast.show();
+    }
+</script>
+
+</body>
+</html>
