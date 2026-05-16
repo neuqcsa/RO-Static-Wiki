@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify, render_template, send_file
+from flask_httpauth import HTTPBasicAuth
 import os
 import shutil
 import json
@@ -14,9 +15,20 @@ feishu_app_id = os.getenv('FEISHU_APP_ID')
 feishu_app_secret = os.getenv('FEISHU_APP_SECRET')
 feishu_spaces = json.loads(os.getenv('FEISHU_SPACES'))
 vitepress_docs_path = os.getenv('VITEPRESS_DOCS_PATH')
+host = os.getenv('HOST')
+flask_port = os.getenv('FLASK_PORT')
 preview_port = os.getenv('PREVIEW_PORT')
 
 app = Flask(__name__)
+auth = HTTPBasicAuth()
+
+users = json.loads(os.getenv('DOWNLOAD_AUTH'))
+
+@auth.verify_password
+def verify_password(username, password):
+    if username in users and users[username] == password:
+        return username
+    return None
 
 
 def modify_docs_json(obj, feishu_space_name):
@@ -91,7 +103,7 @@ def download_and_parse():
         with open(docs_json_path, 'w') as file:
             json.dump(outter, file, indent = 2, ensure_ascii=False)
 
-        if(os.path.exists('dist/docs.json')):
+        if os.path.exists('dist/docs.json'):
             # Merge docs.json
             with open('dist/docs.json') as f:
                 existed_docs_json = json.load(f)
@@ -104,6 +116,9 @@ def download_and_parse():
             shutil.copy(f'Downloads/{feishu_space_name}/docs.json', 'dist/docs.json')
 
         logging.info("Parse finished.")
+
+
+sync_time = 0
 
 
 def apply_to_vitepress():
@@ -120,6 +135,9 @@ def apply_to_vitepress():
 
     shutil.copy('Sample/config.mts', f'{vitepress_docs_path}/.vitepress/config.mts')
     shutil.copy('Sample/index.md', f'{vitepress_docs_path}/index.md')
+    # 打开文件并追加内容
+    with open(f'{vitepress_docs_path}/index.md', "a", encoding="utf-8") as index_md_file:
+        index_md_file.write(f"\n同步时间：{sync_time}\n")
 
     logging.info("Building VitePress static pages...")
     orig_cwd = os.getcwd()
@@ -131,7 +149,7 @@ def apply_to_vitepress():
 def compress_archive():
     logging.info("Compressing archive...")
     os.makedirs("Archives/", exist_ok=True)
-    zip_path = f"Archives/RO-Static-Wiki_{datetime.now().strftime('%Y%m%d%H%M%S')}.zip"
+    zip_path = f"Archives/RO-Static-Wiki_{sync_time.strftime('%Y%m%d%H%M%S')}.zip"
     folder_path = f"{vitepress_docs_path}/.vitepress/dist/"
 
     with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zip_object:
@@ -153,17 +171,18 @@ is_working = False
 
 @app.route("/")
 def handle_index():
-    preview_url = f"http://{request.remote_addr}:{preview_port}/"
+    preview_url = f"http://{host}:{preview_port}/"
     download_url = f"http://{request.host}/download"
     return render_template("index.html", preview_url=preview_url, download_url=download_url)
 
 
 @app.route("/build", methods=["POST"])
 def handle_build():
-    global is_working
+    global is_working, sync_time
     if not is_working:
         is_working = True
 
+        sync_time = datetime.now()
         download_and_parse()
         apply_to_vitepress()
         compress_archive()
@@ -176,11 +195,12 @@ def handle_build():
     else:
         return jsonify({
             "success": False,
-            "message": "有未完成的任务！"
+            "message": "有未完成的任务，请稍后再试。"
         })
 
 
 @app.route('/download')
+@auth.login_required
 def handle_download():
     files = [f for f in os.listdir('Archives') if os.path.isfile(os.path.join('Archives', f))]
     if files:
@@ -194,5 +214,5 @@ def handle_download():
 if __name__ == "__main__":
     logging.info("RO-Static-Wiki Launched.")
     # app.run(host="0.0.0.0", port=5001, debug=True)
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=flask_port)
 
